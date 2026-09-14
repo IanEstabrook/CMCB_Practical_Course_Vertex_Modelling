@@ -146,6 +146,10 @@ def generate_hexagonal_sheet(tissue, nx, ny, edge_length,top_bottom_boundary_per
     dx = np.sqrt(3) * edge_length
     dy = 1.5 * edge_length
 
+    #For periodic surfaces, the initial condition along y must be even, otherwise the periodicity is nonsensical. This is not the case for x, which is periodic every cell unit.
+    
+    if(ny%2==1 and top_bottom_boundary_periodicity==True):
+        ny=ny+1
     for i in range(nx):
         for j in range(ny):
             #Get the centre of mass positions
@@ -155,7 +159,7 @@ def generate_hexagonal_sheet(tissue, nx, ny, edge_length,top_bottom_boundary_per
             cell = Cell(id=len(tissue.cells),i=i,j=j,centre=np.array([xc,yc,0.0]))
 
             for k in range(6):
-
+                #Now evenly space the points around the cell.
                 theta = 2*np.pi*(k+0.5)/6
 
                 xv = xc + edge_length*np.cos(theta)
@@ -176,7 +180,12 @@ def generate_hexagonal_sheet(tissue, nx, ny, edge_length,top_bottom_boundary_per
 
                 if cell not in edge.cells:
                     edge.cells.append(cell)
-                    
+                
+                if edge not in v1.edges:
+                    v1.edges.append(edge)
+
+                if edge not in v2.edges:
+                    v2.edges.append(edge)
             tissue.cells.append(cell)
             #tissue.cell_grid[i][j] = cell
     #tissue.identify_boundary_positions(nx, ny)

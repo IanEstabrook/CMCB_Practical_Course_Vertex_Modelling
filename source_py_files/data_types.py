@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 import numpy as np
-from .geometry import cell_area, cell_perimeter
+from .geometry import cell_area, cell_perimeter,edge_length
 
 #Introduce classes for : Vertices, Cells and Edges. Cells contain a list of vertices, which are shared between
 #Different cells. Edges join two cells as lines between vertices.. 
@@ -19,8 +19,8 @@ class Cell:
     i: int #i,j are used only for the initialisation step where each cell is a periodic lattice and we need to know the boundaries to define periodic conditions
     j: int
     centre: np.ndarray #Cell centre        
-    A0: float = 0.0
-    P0: float = 0.0
+    A0: float = 1.0
+    P0: float = 1.0
     vertices: list = field(default_factory=list) #Each cell has a list of vertices
     
     def area(self):
@@ -28,6 +28,26 @@ class Cell:
 
     def perimeter(self):
         return cell_perimeter(self.vertices)
+    
+    def centroid(self):
+        positions = np.array([v.position[:2] for v in self.vertices])
+
+        x = positions[:, 0]
+        y = positions[:, 1]
+
+        # Coordinates of the next vertex
+        x_next = np.roll(x, -1)
+        y_next = np.roll(y, -1)
+
+        cross = x * y_next - x_next * y
+
+        signed_area = 0.5 * np.sum(cross)
+
+        Cx = np.sum((x + x_next) * cross) / (6 * signed_area)
+        Cy = np.sum((y + y_next) * cross) / (6 * signed_area)
+
+        return np.array([Cx, Cy, 0.0])
+    
 
 @dataclass
 class Edge:
@@ -36,5 +56,9 @@ class Edge:
     v2: Vertex
     #length: float
     cells: list = field(default_factory=list)
-    periodic_partners: list = field(default_factory=list) #We will need to track which, if any edges are at the boundaries and so are periodic with other cells in periodic conditions
+    periodic_partners: list = field(default_factory=list) 
+    #We will need to track which, if any edges are at the boundaries and so are periodic with other cells in periodic conditions
+    
+    def edgeLength(self):        
+        return edge_length(self.v1,self.v2)
     

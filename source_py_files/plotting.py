@@ -18,7 +18,7 @@ def plot_mesh(tissue, show_vertex_ids=False, show_periodic=False,show_cell_ids=F
 
         # label cell centre
         if(show_cell_ids):
-            ax.text(cell.centre[0],cell.centre[1],f"C{cell.id}", fontsize=8, color="blue", ha="center", va="center")
+            ax.text(cell.centroid()[0],cell.centroid()[1],f"C{cell.id}", fontsize=8, color="blue", ha="center", va="center")
         #ax.text(cell.centre[0],cell.centre[1],f"C{cell.i, cell.j}", fontsize=8, color="blue", ha="center", va="center")
     # Plot vertices
     for vertex in tissue.vertices:
@@ -84,5 +84,27 @@ def plot_mesh(tissue, show_vertex_ids=False, show_periodic=False,show_cell_ids=F
     ax.set_ylabel("y")
 
     ax.set_title("Vertex model mesh")
+
+    plt.show()
+    
+def plot_energy_landscape(dx_values,dy_values,energy_change,selectedVertexId):
+
+    plt.figure(figsize=(7, 6))
+
+    DX, DY = np.meshgrid(dx_values, dy_values)
+
+    contour = plt.contourf(DX,DY,energy_change,levels=30)
+
+    plt.colorbar(contour, label=r'$\Delta E$')
+
+    plt.xlabel(r'$\Delta x$')
+    plt.ylabel(r'$\Delta y$')
+
+    plt.axhline(0, linewidth=0.8)
+    plt.axvline(0, linewidth=0.8)
+
+    plt.title(
+        f'Local energy landscape — vertex {selectedVertexId}'
+    )
 
     plt.show()

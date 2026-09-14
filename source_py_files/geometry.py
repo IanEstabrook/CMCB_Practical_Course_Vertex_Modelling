@@ -29,3 +29,11 @@ def cell_perimeter(vertices):
     perimeter =np.sum(np.sqrt((x - np.roll(x, -1))**2 + (y - np.roll(y, -1))**2) )
 
     return perimeter
+
+
+def edge_length(v1,v2):
+    pos1=np.asarray(v1.position[:2])
+    pos2=np.asarray(v2.position[:2])
+    return np.linalg.norm(pos1-pos2);
+
+    
