@@ -1,3 +1,5 @@
+##########File created by Ian Estabrook for the CMCB course 2026.
+
 import numpy as np
 from .data_types import Vertex, Cell, Edge
 
@@ -146,10 +148,12 @@ def generate_hexagonal_sheet(tissue, nx, ny, edge_length,top_bottom_boundary_per
     dx = np.sqrt(3) * edge_length
     dy = 1.5 * edge_length
 
-    #For periodic surfaces, the initial condition along y must be even, otherwise the periodicity is nonsensical. This is not the case for x, which is periodic every cell unit.
+    #For periodic surfaces, the initial condition along y must be even, as y is periodic only every 2 cells with a hexagonal configuration, otherwise the periodicity is nonsensical. This is not the case for x, which is periodic every cell unit.
     
     if(ny%2==1 and top_bottom_boundary_periodicity==True):
         ny=ny+1
+        
+        
     for i in range(nx):
         for j in range(ny):
             #Get the centre of mass positions

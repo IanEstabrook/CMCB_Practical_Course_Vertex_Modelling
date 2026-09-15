@@ -1,4 +1,4 @@
-##########File created by Ian Estabrook for the 
+##########File created by Ian Estabrook for the CMCB course 2026.
 
 from .data_types import Vertex, Cell, Edge
 import numpy as np

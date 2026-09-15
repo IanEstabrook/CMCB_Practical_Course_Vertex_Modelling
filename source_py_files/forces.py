@@ -1,3 +1,5 @@
+##########File created by Ian Estabrook for the CMCB course 2026.
+
 from . import energy
 import numpy as np
 import time 

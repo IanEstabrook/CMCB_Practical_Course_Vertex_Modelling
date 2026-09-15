@@ -1,3 +1,5 @@
+##########File created by Ian Estabrook for the CMCB course 2026.
+
 import matplotlib.pyplot as plt
 from .data_types import Vertex, Cell, Edge
 import numpy as np

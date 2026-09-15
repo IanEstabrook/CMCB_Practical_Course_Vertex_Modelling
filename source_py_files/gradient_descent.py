@@ -1,3 +1,6 @@
+##########File created by Ian Estabrook for the CMCB course 2026.
+
+
 from . import forces
 from . import topology_v3
 from . import plotting
@@ -129,37 +132,7 @@ def edges_share_vertex(edge1, edge2):
         or edge1.v2.id == edge2.v2.id
     )
 
-'''
-def get_candidate_edges_for_vertex(vertex):
-    """
-    Find candidate edges that could intersect an edge incident
-    to `vertex`.
-
-    Uses:        vertex -> incident edges -> neighbouring cells -> cell vertices-> their edges
-    """
-
-    candidate_edges = {}
-
-    num_edges=0;
-    start_time = time.time()
     
-    for edge in vertex.edges:
-
-        for cell in edge.cells:
-
-            for cell_vertex in cell.vertices:
-
-                for candidate_edge in cell_vertex.edges:
-                    #if candidate_edge.id not in candidate_edges.id:
-                    candidate_edges[candidate_edge.id] = candidate_edge
-                    num_edges=num_edges+1;
-
-    #print("num_edges=",num_edges)
-    #print("Candidate edge IDs:", list(candidate_edges.keys()))
-    #print("--- %s seconds to determine all candidate edges ---" % (time.time() - start_time))    
-    return list(candidate_edges.values())
-'''
-
 def get_candidate_edges_for_vertex(vertex, n_rings=2):
     """
     Find candidate edges that could intersect an edge incident

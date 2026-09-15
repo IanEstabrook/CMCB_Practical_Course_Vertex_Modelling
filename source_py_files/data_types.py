@@ -1,3 +1,5 @@
+##########File created by Ian Estabrook for the CMCB course 2026.
+
 from dataclasses import dataclass, field
 import numpy as np
 from .geometry import cell_area, cell_perimeter,edge_length

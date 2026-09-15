@@ -196,8 +196,8 @@ def vertex_removal_creates_intersection(CellA, CellB, v1, v2, tol=1e-12):
             edgeB = (vertexB, next_vertexB)
                         
             # Don't test an edge against itself, should only be v1 and v2 cases, however since we removed one of each vertex from copyCellA cand copyCellB, we should never trigger this, nonetheless...
-            if((vertexA==vertexB and next_vertexA==next_vertexB)
-               or (vertexA==next_vertexB and next_vertexA==vertexB)):
+            if((vertexA.id==vertexB.id and next_vertexA.id==next_vertexB.id)
+               or (vertexA.id==next_vertexB.id and next_vertexA==vertexB.id)):
                 
                 continue            
             if segments_intersect(vertexA.position[:2], next_vertexA.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
@@ -205,8 +205,8 @@ def vertex_removal_creates_intersection(CellA, CellB, v1, v2, tol=1e-12):
                 #Then the removal of v1 from CellA and v2 from CellB causes an intersection, so the correct removal is the other way around.
                 CellA.vertices.pop(i2A)
                 CellB.vertices.pop(i1B)
-                print("\n\n (1)TestRemoval of v1 from A would cause intersection, removing v2")
-                print("For debugging, positions were:\n",vertexA.position[:2], next_vertexA.position[:2], vertexB.position[:2], next_vertexB.position[:2])
+                #print("\n\n (1)TestRemoval of v1 from A would cause intersection, removing v2")
+                #print("For debugging, positions were:\n",vertexA.position[:2], next_vertexA.position[:2], vertexB.position[:2], next_vertexB.position[:2])
                 removeA = v2A
                 removeB = v1B
                 return removeA,removeB
@@ -260,394 +260,184 @@ def vertex_removal_creates_intersection(CellA, CellB, v1, v2, tol=1e-12):
     return False
 
 
-def vertex_addition_creates_intersection(CellC, CellD, CellA, CellB, vertexAddToC, vertexAddToD, tol=1e-12):
+def get_current_vertex_pairs(tissue):
+    """
+    Construct the current set of vertex-vertex pairs directly from
+    the cyclic vertex lists of all cells.
 
-    #This function determines whether adding vertex_to_add to cellC and CellD causes an intersection with any of CellA,CellB,CellC,CellD
-    
-    #Copy the cells so we can test if removing v1 from the copyCellA and v2 from the copyCellB
-    copyCellC=copy.deepcopy(CellC)
-    copyCellD=copy.deepcopy(CellD)
-    
+    Returns a dictionary:
+        (vertex_id_1, vertex_id_2) -> (vertex1, vertex2)
+
+    Each geometrical segment is included only once.
+    """
+
+    vertex_pairs = {}
+
+    for cell in tissue.cells:
+
+        vertices = cell.vertices
+        n = len(vertices)
+
+        for i in range(n):
+
+            v1 = vertices[i]
+            v2 = vertices[(i + 1) % n]
+
+            # Store pair in canonical ID order so that
+            # (v1,v2) and (v2,v1) are considered identical
+            key = tuple(sorted((v1.id, v2.id)))
+
+            vertex_pairs[key] = (v1, v2)
+
+    return list(vertex_pairs.values())
+
+def find_all_intersections_from_vertices(tissue, tol=1e-10):
+
+    intersections = []
+
+    vertex_pairs = get_current_vertex_pairs(tissue)
+
+    for i, (v1, v2) in enumerate(vertex_pairs):
+
+        a = v1.position[:2]
+        b = v2.position[:2]
+
+        for v3, v4 in vertex_pairs[i+1:]:
+
+            # Segments sharing a vertex are allowed to meet
+            if (
+                v1.id == v3.id or
+                v1.id == v4.id or
+                v2.id == v3.id or
+                v2.id == v4.id
+            ):
+                continue
+
+            c = v3.position[:2]
+            d = v4.position[:2]
+
+            if segments_intersect(a, b, c, d, tol=tol):
+
+                intersections.append(
+                    ((v1.id, v2.id), (v3.id, v4.id))
+                )
+
+    return intersections
+
+def vertex_addition_creates_intersection_v2(tissue, CellC, CellD, vertexAddToC, vertexAddToD, tol=1e-12):
+
+    #This function determines whether adding vertex_to_add to cellC and CellD causes an intersection with any of CellA,CellB,CellC,CellD        
+    testMessages=False
     #The vertex to add to D already exists on C
-    iC = find_periodic_vertex_index(copyCellC, vertexAddToD)
-    #i2C = find_periodic_vertex_index(CellC, vertex_to_add_D)
-
+    iC = find_periodic_vertex_index(CellC, vertexAddToD)    
     vC = CellC.vertices[iC]
-    
-    
+        
     #The vertex to add to C already exists on D
-    iD = find_periodic_vertex_index(copyCellD, vertexAddToC)
+    iD = find_periodic_vertex_index(CellD, vertexAddToC)
     vD = CellD.vertices[iD]
 
     #We need to test whether the new vertex to each of cell C, D should be added before or after the existing vertex.
-    # Extremely brute force approach, but we try adding the vertex before and after until we find a combination which doesn't cause an intersection between cell C and D and A and B...
-    #We try this by adding first the vertex before to copyCellC 
+    # Extremely brute force approach, but we try adding the vertex before and after until we find a combination which doesn't cause an intersection between cells in the new configuration, one of them has to... C and D and A and B...
     
+    #We try this by adding first the vertex before, after the known index, to each of the tissues.
+    correctPosCFound=True
+    correctPosDFound=True
     #################################
     #
     #
     # possibility 1: addition at iC,iD
     #
     #################################
-    copyCellC.vertices.insert((iC) %len(copyCellC.vertices) , vertexAddToC)
-    copyCellD.vertices.insert((iD) %len(copyCellD.vertices) , vertexAddToD)
-            
-    correctPosCFound=True
-    correctPosDFound=True
-    #Loop over C and all 3 other cells
-    for vertexC, next_vertexC in zip(copyCellC.vertices, copyCellC.vertices[1:] + copyCellC.vertices[:1]):
-        edgeC = (vertexC, next_vertexC)                
-        
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexC.id or vertexA.id == next_vertexC.id or next_vertexA.id==vertexC.id or next_vertexA.id == next_vertexC.id):
-                print(
-                        "Case 1a: SKIPPING:",
-                        f"C edge {vertexC.id}->{next_vertexC.id}",
-                        f"A edge {vertexA.id}->{next_vertexA.id}"
-                    )
-            #if((vertexA.id==vertexC.id and vertexA.id == next_vertexC.id) or (next_vertexA.id==vertexC.id and next_vertexA.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):                
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellA, so this is not the correct position to add. 
-                print("Case 1A intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2])
-                correctPosCFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            
-            if(vertexB.id==vertexC.id or vertexB.id == next_vertexC.id or next_vertexB.id==vertexC.id or next_vertexB.id == next_vertexC.id):
-            #if((vertexB.id==vertexC.id and vertexB.id == next_vertexC.id) or (next_vertexB.id==vertexC.id and next_vertexB.id == next_vertexC.id)):
-                print(
-                        "Case 1b: SKIPPING:",
-                        f"C edge {vertexC.id}->{next_vertexC.id}",
-                        f"B edge {vertexB.id}->{next_vertexB.id}"
-                    )
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                print("Case 3B intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2])
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.                              
-                correctPosCFound=False
-            
-        for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-            edgeD = (vertexD, next_vertexD)
-            if(vertexD.id==vertexC.id or vertexD.id == next_vertexC.id or next_vertexD.id==vertexC.id or next_vertexD.id == next_vertexC.id):
-            #if((vertexD.id==vertexC.id and vertexD.id == next_vertexC.id) or (next_vertexD.id==vertexC.id and next_vertexD.id == next_vertexC.id)):
-                #This edge is shared and so always intersects
-                print(
-                        "Case 1d: SKIPPING:",
-                        f"C edge {vertexC.id}->{next_vertexC.id}",
-                        f"D edge {vertexD.id}->{next_vertexD.id}"
-                    )
-                continue
-
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexD.position[:2], next_vertexD.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellD, so this is not the correct position to add.to cell C         
-                correctPosCFound=False
-                correctPosDFound=False
-            
+    CellC.vertices.insert((iC) %len(CellC.vertices) , vertexAddToC)
+    CellD.vertices.insert((iD) %len(CellD.vertices) , vertexAddToD)
     
-    #Loop over D and all other cells
-    for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-        edgeD = (vertexD, next_vertexD)
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexD.id or vertexA.id == next_vertexD.id or next_vertexA.id==vertexD.id or next_vertexA.id == next_vertexD.id):
-            #if((vertexA.id==vertexD.id and vertexA.id == next_vertexD.id) or ( next_vertexA.id==vertexD.id and next_vertexA.id == next_vertexD.id)):
-                continue
-            
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):
-                
-                #Then the addition of vertexAddToC to D before ic causes an intersection with CellA, so this is not the correct position to add.
-                
-                correctPosDFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            if(vertexB.id==vertexD.id or vertexB.id == next_vertexD.id or next_vertexB.id==vertexD.id or next_vertexB.id == next_vertexD.id):
-            #if((vertexB.id==vertexD.id and vertexB.id == next_vertexD.id) or (next_vertexB.id==vertexD.id and next_vertexB.id == next_vertexD.id)):
-                continue
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.
-                
-                correctPosDFound=False
-          
+    intersections=find_all_intersections_from_vertices(tissue, tol=1e-12)
+    if(intersections):
+        correctPosCFound=False
+        correctPosDFound=False
         
-    if(correctPosCFound and correctPosDFound):   
-        print("Step 1 success Adding vertices at", iC, iD)
+    if(correctPosCFound and correctPosDFound):  
+        if testMessages:
+            print("Step 1 success Added vertices at", iC, iD)
         return iC, iD
     else:
-        copyCellC.vertices.pop(iC)   
-        copyCellD.vertices.pop(iD)                                
+        #Remove the vertices from the position they were added and try the next configuration
+        CellC.vertices.pop(iC)   
+        CellD.vertices.pop(iD)                                
 
     #################################
-    #
     #
     # possibility 2: addition at iC+1,iD
     #
     #################################
-    copyCellC.vertices.insert((iC+1) %len(copyCellC.vertices) , vertexAddToC)
-    copyCellD.vertices.insert((iD) %len(copyCellD.vertices) , vertexAddToD)
+    CellC.vertices.insert((iC+1) %len(CellC.vertices) , vertexAddToC)
+    CellD.vertices.insert((iD) %len(CellD.vertices) , vertexAddToD)
             
     correctPosCFound=True
     correctPosDFound=True
-    #Loop over C and all 3 other cells
-    for vertexC, next_vertexC in zip(copyCellC.vertices, copyCellC.vertices[1:] + copyCellC.vertices[:1]):
-        edgeC = (vertexC, next_vertexC)                
+    intersections=find_all_intersections_from_vertices(tissue, tol=1e-12)
+    if(intersections):
+        correctPosCFound=False
+        correctPosDFound=False            
         
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexC.id or vertexA.id == next_vertexC.id or next_vertexA.id==vertexC.id or next_vertexA.id == next_vertexC.id):
-            #if((vertexA.id==vertexC.id and vertexA.id == next_vertexC.id) or (next_vertexA.id==vertexC.id and next_vertexA.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):                
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellA, so this is not the correct position to add. 
-                print("Case 3A intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2])
-                correctPosCFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            
-            if(vertexB.id==vertexC.id or vertexB.id == next_vertexC.id or next_vertexB.id==vertexC.id or next_vertexB.id == next_vertexC.id):
-            #if((vertexB.id==vertexC.id and vertexB.id == next_vertexC.id) or (next_vertexB.id==vertexC.id and next_vertexB.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                print("Case 3B intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2])
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.                              
-                correctPosCFound=False
-            
-        for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-            edgeD = (vertexD, next_vertexD)
-            if(vertexD.id==vertexC.id or vertexD.id == next_vertexC.id or next_vertexD.id==vertexC.id or next_vertexD.id == next_vertexC.id):
-            #if((vertexD.id==vertexC.id and vertexD.id == next_vertexC.id) or (next_vertexD.id==vertexC.id and next_vertexD.id == next_vertexC.id)):
-                #This edge is shared and so always intersects
-                continue
-
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexD.position[:2], next_vertexD.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellD, so this is not the correct position to add.to cell C         
-                correctPosCFound=False
-                correctPosDFound=False
-            
-    
-    #Loop over D and all other cells
-    for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-        edgeD = (vertexD, next_vertexD)
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexD.id or vertexA.id == next_vertexD.id or next_vertexA.id==vertexD.id or next_vertexA.id == next_vertexD.id):
-            #if((vertexA.id==vertexD.id and vertexA.id == next_vertexD.id) or ( next_vertexA.id==vertexD.id and next_vertexA.id == next_vertexD.id)):
-                continue
-            
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):
-                
-                #Then the addition of vertexAddToC to D before ic causes an intersection with CellA, so this is not the correct position to add.
-                
-                correctPosDFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            if(vertexB.id==vertexD.id or vertexB.id == next_vertexD.id or next_vertexB.id==vertexD.id or next_vertexB.id == next_vertexD.id):
-            #if((vertexB.id==vertexD.id and vertexB.id == next_vertexD.id) or (next_vertexB.id==vertexD.id and next_vertexB.id == next_vertexD.id)):
-                continue
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.
-                
-                correctPosDFound=False
-          
-            
-    if(correctPosCFound and correctPosDFound):        
-        print("Step 2 success Adding vertices at", iC+1, iD)
+    if(correctPosCFound and correctPosDFound):     
+        if testMessages:
+            print("Step 2 success Added vertices at", iC+1, iD)
         return iC+1, iD
     else:
-        copyCellC.vertices.pop(iC+1)   
-        copyCellD.vertices.pop(iD)                                
+        CellC.vertices.pop(iC+1)   
+        CellD.vertices.pop(iD)                                
     
     #################################
-    #
     #
     # possibility 3: addition at iC,iD+1
     #
     #################################
-    copyCellC.vertices.insert((iC) %len(copyCellC.vertices) , vertexAddToC)
-    copyCellD.vertices.insert((iD+1) %len(copyCellD.vertices) , vertexAddToD)
+    CellC.vertices.insert((iC) %len(CellC.vertices) , vertexAddToC)
+    CellD.vertices.insert((iD+1) %len(CellD.vertices) , vertexAddToD)
             
     correctPosCFound=True
     correctPosDFound=True
-    #Loop over C and all 3 other cells
-    for vertexC, next_vertexC in zip(copyCellC.vertices, copyCellC.vertices[1:] + copyCellC.vertices[:1]):
-        edgeC = (vertexC, next_vertexC)                
-        
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexC.id or vertexA.id == next_vertexC.id or next_vertexA.id==vertexC.id or next_vertexA.id == next_vertexC.id):
-            #if((vertexA.id==vertexC.id and vertexA.id == next_vertexC.id) or (next_vertexA.id==vertexC.id and next_vertexA.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):                
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellA, so this is not the correct position to add. 
-                print("Case 3A intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2])
-                correctPosCFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            
-            if(vertexB.id==vertexC.id or vertexB.id == next_vertexC.id or next_vertexB.id==vertexC.id or next_vertexB.id == next_vertexC.id):
-            #if((vertexB.id==vertexC.id and vertexB.id == next_vertexC.id) or (next_vertexB.id==vertexC.id and next_vertexB.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                print("Case 3B intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2])
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.                              
-                correctPosCFound=False
-            
-        for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-            edgeD = (vertexD, next_vertexD)
-            if(vertexD.id==vertexC.id or vertexD.id == next_vertexC.id or next_vertexD.id==vertexC.id or next_vertexD.id == next_vertexC.id):
-            #if((vertexD.id==vertexC.id and vertexD.id == next_vertexC.id) or (next_vertexD.id==vertexC.id and next_vertexD.id == next_vertexC.id)):
-                #This edge is shared and so always intersects
-                continue
 
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexD.position[:2], next_vertexD.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellD, so this is not the correct position to add.to cell C         
-                correctPosCFound=False
-                correctPosDFound=False
-            
-    
-    #Loop over D and all other cells
-    for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-        edgeD = (vertexD, next_vertexD)
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexD.id or vertexA.id == next_vertexD.id or next_vertexA.id==vertexD.id or next_vertexA.id == next_vertexD.id):
-            #if((vertexA.id==vertexD.id and vertexA.id == next_vertexD.id) or ( next_vertexA.id==vertexD.id and next_vertexA.id == next_vertexD.id)):
-                continue
-            
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):
-                
-                #Then the addition of vertexAddToC to D before ic causes an intersection with CellA, so this is not the correct position to add.
-                
-                correctPosDFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            if(vertexB.id==vertexD.id or vertexB.id == next_vertexD.id or next_vertexB.id==vertexD.id or next_vertexB.id == next_vertexD.id):
-            #if((vertexB.id==vertexD.id and vertexB.id == next_vertexD.id) or (next_vertexB.id==vertexD.id and next_vertexB.id == next_vertexD.id)):
-                continue
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.
-                
-                correctPosDFound=False
-          
-          
-    if(correctPosCFound and correctPosDFound):        
-        print("Step 3 success Adding vertices at", iC, iD+1)
+    intersections=find_all_intersections_from_vertices(tissue, tol=1e-12)
+    if(intersections):
+        correctPosCFound=False
+        correctPosDFound=False            
+        
+    if(correctPosCFound and correctPosDFound):       
+        if testMessages:
+            print("Step 3 success Added vertices at", iC, iD+1)
         return iC, iD+1
     else:
-        copyCellC.vertices.pop(iC)   
-        copyCellD.vertices.pop(iD+1)  
+        CellC.vertices.pop(iC)   
+        CellD.vertices.pop(iD+1)  
         
     #################################
-    #
     #
     # possibility 4: addition at iC+1,iD+1
     #
     #################################
-    copyCellC.vertices.insert((iC+1) %len(copyCellC.vertices) , vertexAddToC)
-    copyCellD.vertices.insert((iD+1) %len(copyCellD.vertices) , vertexAddToD)
+    CellC.vertices.insert((iC+1) %len(CellC.vertices) , vertexAddToC)
+    CellD.vertices.insert((iD+1) %len(CellD.vertices) , vertexAddToD)
             
     correctPosCFound=True
-    correctPosDFound=True
-    #Loop over C and all 3 other cells
-    for vertexC, next_vertexC in zip(copyCellC.vertices, copyCellC.vertices[1:] + copyCellC.vertices[:1]):
-        edgeC = (vertexC, next_vertexC)                
+    correctPosDFound=True          
+              
+    intersections=find_all_intersections_from_vertices(tissue, tol=1e-12)
+    if(intersections):
+        correctPosCFound=False
+        correctPosDFound=False  
         
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexC.id or vertexA.id == next_vertexC.id or next_vertexA.id==vertexC.id or next_vertexA.id == next_vertexC.id):
-            #if((vertexA.id==vertexC.id and vertexA.id == next_vertexC.id) or (next_vertexA.id==vertexC.id and next_vertexA.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):                
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellA, so this is not the correct position to add. 
-                print("Case 3A intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexA.position[:2], next_vertexA.position[:2])
-                correctPosCFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            
-            if(vertexB.id==vertexC.id or vertexB.id == next_vertexC.id or next_vertexB.id==vertexC.id or next_vertexB.id == next_vertexC.id):
-            #if((vertexB.id==vertexC.id and vertexB.id == next_vertexC.id) or (next_vertexB.id==vertexC.id and next_vertexB.id == next_vertexC.id)):
-                continue
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                print("Case 3B intersect:", vertexC.position[:2], next_vertexC.position[:2],vertexB.position[:2], next_vertexB.position[:2])
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.                              
-                correctPosCFound=False
-            
-        for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-            edgeD = (vertexD, next_vertexD)
-            if(vertexD.id==vertexC.id or vertexD.id == next_vertexC.id or next_vertexD.id==vertexC.id or next_vertexD.id == next_vertexC.id):
-            #if((vertexD.id==vertexC.id and vertexD.id == next_vertexC.id) or (next_vertexD.id==vertexC.id and next_vertexD.id == next_vertexC.id)):
-                #This edge is shared and so always intersects
-                continue
-
-                
-            if segments_intersect(vertexC.position[:2], next_vertexC.position[:2],vertexD.position[:2], next_vertexD.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellD, so this is not the correct position to add.to cell C         
-                correctPosCFound=False
-                correctPosDFound=False
-            
-    
-    #Loop over D and all other cells
-    for vertexD, next_vertexD in zip(copyCellD.vertices, copyCellD.vertices[1:] + copyCellD.vertices[:1]):
-        edgeD = (vertexD, next_vertexD)
-        for vertexA, next_vertexA in zip(CellA.vertices, CellA.vertices[1:] + CellA.vertices[:1]):
-            edgeA = (vertexA, next_vertexA)
-            
-            if(vertexA.id==vertexD.id or vertexA.id == next_vertexD.id or next_vertexA.id==vertexD.id or next_vertexA.id == next_vertexD.id):
-            #if((vertexA.id==vertexD.id and vertexA.id == next_vertexD.id) or ( next_vertexA.id==vertexD.id and next_vertexA.id == next_vertexD.id)):
-                continue
-            
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexA.position[:2], next_vertexA.position[:2],tol=tol):
-                
-                #Then the addition of vertexAddToC to D before ic causes an intersection with CellA, so this is not the correct position to add.
-                
-                correctPosDFound=False
-            
-        for vertexB, next_vertexB in zip(CellB.vertices, CellB.vertices[1:] + CellB.vertices[:1]):
-            edgeB = (vertexB, next_vertexB)
-            if(vertexB.id==vertexD.id or vertexB.id == next_vertexD.id or next_vertexB.id==vertexD.id or next_vertexB.id == next_vertexD.id):
-            #if((vertexB.id==vertexD.id and vertexB.id == next_vertexD.id) or (next_vertexB.id==vertexD.id and next_vertexB.id == next_vertexD.id)):
-                continue
-            if segments_intersect(vertexD.position[:2], next_vertexD.position[:2],vertexB.position[:2], next_vertexB.position[:2],tol=tol):
-                #Then the addition of vertexAddToC to C before ic causes an intersection with CellB, so this is not the correct position to add.
-                
-                correctPosDFound=False
-          
-          
-    if(correctPosCFound and correctPosDFound):        
-        print("Step 4 success Adding vertices at", iC+1, iD+1)
+    if(correctPosCFound and correctPosDFound):   
+        if testMessages:
+            print("Step 4 success Adding vertices at", iC+1, iD+1)
         return iC+1, iD+1
     else:
-        copyCellC.vertices.pop(iC+1)   
-        copyCellD.vertices.pop(iD+1)          
+        CellC.vertices.pop(iC+1)   
+        CellD.vertices.pop(iD+1)          
     
     print("Warning, unable to identify where to add cell vertices to C and D...")
-    return
+    return        
 
 
 def closest_periodic_vertex(vertex, cell):
@@ -698,7 +488,7 @@ def remove_unconnected_vertices(vertices):
 def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_transitions=None):
     
     num_t1_transitions=0;
-    testMessages=True;
+    testMessages=False;
     #Get the short edges.
     short_edges=find_short_edges(tissue, t1_threshold);
     if len(short_edges) == 0:
@@ -755,16 +545,17 @@ def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_tra
                 print(f"Short edge found, id",edge.id) 
                 print(f"Edge joins vertices",edge.v1.id,edge.v2.id)
                 
-            if edge not in tissue.edges:
+            #if edge not in tissue.edges:
                 # Re-check that the edge still exists. A previous T1 may
                 # have modified the topology.
-                continue
+            #    continue
             #Get the cells involved in the transition, this includes over the boundaries if periodic.
             adjacent_cells = edge.cells
 
             # Boundary edges in a non periodic configuration cannot undergo a T1 transition.
-            if len(adjacent_cells) != 2:
-                print(f"Warning: Edge is adjacent to", len(adjacent_cells),"cells, skipping")
+            if len(adjacent_cells) == 1:
+                if testMessages:
+                    print(f"Warning: Edge is adjacent to", len(adjacent_cells),"cells, skipping")
                 continue
             
             #Track and update the edge id_s in such a way that for periodic boundaries, no update is performed twice in one step.
@@ -932,8 +723,8 @@ def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_tra
             v2B = cellB.vertices[i2B]
                                 
             removeA,removeB=vertex_removal_creates_intersection(cellA, cellB, v1, v2, tol=1e-12)
-                
-            print("Removed from Cell A vertex id=",removeA.id, " Removed from Cell B vertex id=",removeB.id)
+            if(testMessages):   
+                print("Removed from Cell A vertex id=",removeA.id, " Removed from Cell B vertex id=",removeB.id)
             #if(testMessages):
             #    print("For Cell A, ", i1A, i2A,"Removing entry",remove_index_A,"vertex frrom Cell A id :",cellA.vertices[remove_index_A].id)
                 
@@ -1010,52 +801,7 @@ def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_tra
                    #the y positions are at the same value, but the boundary means we expected a shift along y as well, creating a new vertex at the existing x but shifted y...
                 #It can only be a periodic shift along x or along y, vertexAddToD must share with v1 either the x or y coordinate
                                 
-            #cross_before = cross2d(v1C[:2] - beforeMoveC.position[:2],v2C[:2] -v1C[:2])            
-            #cross_after = cross2d(v2C[:2] - v1C[:2],afterMoveC.position[:2] - v2C[:2])
-            #cross_after=cross2d(v2C[:2]- beforeMoveC.position[:2],v1C[:2] -v2C[:2])
-            #cross_before = cross2d(v2C[:2] - beforeMoveC.position[:2],v1C[:2] - beforeMoveC.position[:2])
-            #cross_after = cross2d(afterMoveC.position[:2] - v2C[:2],v1C[:2] - v2C[:2])
-            '''
-            B = beforeMoveC.position[:2]
-            V = v1C[:2]
-            A = afterMoveC.position[:2]
-            Q = v2C[:2]
 
-            # Existing local orientation
-            orientation = cross2d(V - B, A - V)
-
-            # Which side of B -> V is Q on?
-            cross_before = cross2d(Q - B, V - Q)
-
-            # Which side of V -> A is Q on?
-            cross_after = cross2d(Q - V, A - Q)
-
-            before_valid = cross_before * orientation > 0
-            after_valid  = cross_after * orientation > 0
-            if(testMessages):
-                print("C:")
-                print("beforeMoveCPosition=", beforeMoveC.position[:2])
-                print("v1C=",v1C[:2], "v2C=",v2C[:2]);
-                print("orientation =", orientation)
-                print("cross_before =", cross_before)
-                print("cross_after  =", cross_after)
-                print("i1C=",i1C, "vertex initially on cell C =",cellC.vertices[i1C].id)
-                    
-            if before_valid:#cross_before * orientationC > 0:
-                if(testMessages):
-                    print("(1)Adding to cell C=",cellC.id," vertex", vertexAddToC.id, "between vertex" ,beforeMoveC.id,"and",cellC.vertices[(i1C) % len(cellC.vertices)].id)
-                cellC.vertices.insert((i1C) %len(cellC.vertices) , vertexAddToC)
-                
-                #cellC.vertices.insert(i1C +1 , vertexAddToC)
-            elif after_valid:#cross_after * orientationC > 0:
-                if(testMessages):
-                    print("(2)Adding to cell C=",cellC.id," vertex", vertexAddToC.id, "between vertex" ,cellC.vertices[(i1C+1)].id,"and",cellC.vertices[(i1C+1) % len(cellC.vertices)].id)
-                
-                cellC.vertices.insert((i1C+1) % len(cellC.vertices) , vertexAddToC)
-
-            else:
-                print("WARNING: could not determine C insertion")
-            '''
                 
             # ------------------------------------------------------------
             # Cell D
@@ -1112,61 +858,10 @@ def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_tra
                 v1D=newVertexD.position
                 if(testMessages):
                     print("Testing D: New length =",np.linalg.norm(v1D - v2D))
-                   #the y positions are at the same value, but the boundary means we expected a shift along y as well, creating a new vertex at the existing x but shifted y...
-                #It can only be a periodic shift along x or along y, vertexAddToD must share with v1 either the x or y coordinate
-                
-            #cross_before = cross2d(v1D[:2] - beforeMoveD.position[:2],v2D[:2] -v1D[:2])
-            #cross_after = cross2d(v1D[:2] - v1D[:2],afterMoveD.position[:2] - v2D[:2])
-            #cross_after=cross2d(v2D[:2]- beforeMoveD.position[:2],v1D[:2] -v2D[:2])
-            #cross_before = cross2d(v2D[:2] - beforeMoveD.position[:2],v1D[:2] - beforeMoveD.position[:2])
-            #cross_after = cross2d(afterMoveD.position[:2] - v2D[:2],v1D[:2] - v2D[:2])
-            '''
-            B = beforeMoveD.position[:2]
-            V = v2D[:2]
-            A = afterMoveD.position[:2]
-            Q = v1D[:2]
 
-            # Existing local orientation
-            orientation = cross2d(V - B, A - V)
 
-            # Which side of B -> V is Q on?
-            cross_before = cross2d(Q - B, V - Q)
-
-            # Which side of V -> A is Q on?
-            cross_after = cross2d(Q - V, A - Q)
-
-            before_valid = cross_before * orientation > 0
-            after_valid  = cross_after * orientation > 0
-            if(testMessages):
-                print("D:")
-                print("beforeMoveDPosition=", beforeMoveD.position[:2])
-                print("v1D=",v1D[:2], "v2D=",v2D[:2]);
-                print("orientation =", orientation)
-                print("cross_before =", cross_before)
-                print("cross_after  =", cross_after)
-                print("i2D=",i2D, "vertex initially on cell D=",cellD.vertices[i2D].id)
             
-            if before_valid:#cross_before * orientationD > 0:
-                if(testMessages):
-                    print("(3)Adding to cell D=",cellD.id," vertex", vertexAddToD.id, "between vertex" ,beforeMoveD.id,"and",cellD.vertices[(i2D) % len(cellD.vertices)].id)
-                
-                cellD.vertices.insert((i2D) % len(cellD.vertices) , vertexAddToD)
-            elif after_valid:#cross_after * orientationD > 0:                
-                if(testMessages):
-                    print("(4)Adding to cell D=",cellD.id," vertex", vertexAddToD.id, "between vertex" ,cellD.vertices[i2D].id,"and",cellD.vertices[(i2D+1) % len(cellD.vertices)].id)
-                    
-                cellD.vertices.insert((i2D+1)% len(cellD.vertices) , vertexAddToD)
-            else:
-                print("WARNING: could not determine D insertion")
-            '''
-            
-            AdditionIndexC,AdditionIndexD= vertex_addition_creates_intersection(cellC, cellD, cellA, cellB, vertexAddToC, vertexAddToD, tol=1e-12)
-            print("Adding to cell C=",cellC.id," vertex", vertexAddToC.id, "between vertex" ,cellC.vertices[(AdditionIndexC)% len(cellC.vertices)].id,"and",cellC.vertices[(AdditionIndexC+1)% len(cellC.vertices) ].id)
-            print("Adding to cell D=",cellD.id," vertex", vertexAddToD.id, "between vertex" ,cellD.vertices[(AdditionIndexD)% len(cellD.vertices)].id,"and",cellD.vertices[(AdditionIndexD+1)% len(cellD.vertices) ].id)
-            
-            cellC.vertices.insert((AdditionIndexC)% len(cellC.vertices) , vertexAddToC)
-            cellD.vertices.insert((AdditionIndexD)% len(cellD.vertices) , vertexAddToD)
-            
+            vertex_addition_creates_intersection_v2(tissue, cellC, cellD, vertexAddToC, vertexAddToD, tol=1e-12)
             # ------------------------------------------------------------
             # We have now added the vertices to the new locations in the cells C,D that they will belong to, and removed them 
             # from cell A and B.
@@ -1267,9 +962,9 @@ def perform_t1_transitions(tissue,t1_threshold=0.01,new_edge_length=None,max_tra
             #Also remove any vertices which are no longer connected to any edges.
             vertices = remove_unconnected_vertices(tissue.vertices)
             num_t1_transitions=num_t1_transitions+1;
-            if(num_t1_transitions >2):
-                plotting.plot_mesh(tissue,show_cell_ids=True,show_vertex_ids=True,show_periodic=False,show_edge_ids=True)
-                raise RuntimeError("Stopping here for debugging")
+            #if(num_t1_transitions >2):
+            #    plotting.plot_mesh(tissue,show_cell_ids=True,show_vertex_ids=True,show_periodic=False,show_edge_ids=True)
+            #    raise RuntimeError("Stopping here for debugging")
     return num_t1_transitions
 
 
